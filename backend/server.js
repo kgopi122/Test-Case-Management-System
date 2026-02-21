@@ -8,6 +8,7 @@ const authRoutes = require('./routes/auth');
 const testCaseRoutes = require('./routes/testcases');
 const codeImportRoutes = require('./routes/codeimports');
 const teamRoutes = require('./routes/teams');
+const testResultRoutes = require('./routes/testResultRoutes'); // ADDED
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -35,6 +36,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/testcases', testCaseRoutes);
 app.use('/api/code-imports', codeImportRoutes);
 app.use('/api/teams', teamRoutes);
+app.use('/api/testresults', testResultRoutes); // ADDED
 app.use('/api/activity', require('./routes/activity'));
 
 // Error handling middleware

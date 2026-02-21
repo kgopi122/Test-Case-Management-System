@@ -149,6 +149,11 @@ const CodeRunnerPage = ({ currentUser, importId, highlightedTestCaseId }) => {
     const [notification, setNotification] = useState(null);
     const [activeSidebarTab, setActiveSidebarTab] = useState('testcases');
 
+    // TestIt State
+    const [testItUrl, setTestItUrl] = useState('http://localhost:5173');
+    const [isTestItRunning, setIsTestItRunning] = useState(false);
+    const [testItResult, setTestItResult] = useState(null);
+
     // Socket Ref
     const socketRef = React.useRef(null);
 
@@ -488,6 +493,53 @@ const CodeRunnerPage = ({ currentUser, importId, highlightedTestCaseId }) => {
         }
     };
 
+    const handleRunTestIt = async () => {
+        if (!testItUrl) {
+            setError("Please enter a Target URL for testing.");
+            return;
+        }
+
+        // Use highlightedTestCaseId if available, otherwise just use a dummy 'new' string for the route
+        // since the controller might expect an ID. Let's send the highlighted one, or skip if none.
+        if (!highlightedTestCaseId && testCases.length === 0) {
+            showNotification("Please select or create at least one test case to associate this test result with.", "error");
+            return;
+        }
+
+        const targetId = highlightedTestCaseId || (testCases.length > 0 ? testCases[0].id : 'temp');
+
+        setIsTestItRunning(true);
+        setTestItResult(null);
+
+        try {
+            const response = await fetch(`${API_URL}/testresults/${targetId}/automate`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${localStorage.getItem('token')}`
+                },
+                body: JSON.stringify({ targetUrl: testItUrl })
+            });
+
+            const data = await response.json();
+            if (data.success) {
+                setTestItResult({
+                    success: true,
+                    actualResult: data.data.outcome.actualResult,
+                    status: data.data.outcome.status,
+                    time: data.data.outcome.executionTimeMs
+                });
+                showNotification("Automated test completed successfully!", "success");
+            } else {
+                setTestItResult({ success: false, error: data.message });
+            }
+        } catch (err) {
+            setTestItResult({ success: false, error: err.message });
+        } finally {
+            setIsTestItRunning(false);
+        }
+    };
+
     return (
         <div className="h-[calc(100vh-64px)]flex flex-col p-4 bg-slate-950 text-slate-200 relative">
             {/* Notification Toast */}
@@ -581,6 +633,12 @@ const CodeRunnerPage = ({ currentUser, importId, highlightedTestCaseId }) => {
                             Test Cases ({testCases.length})
                         </button>
                         <button
+                            className={`flex-1 py-2 text-sm font-medium ${activeSidebarTab === 'testit' ? 'bg-slate-800 text-white border-t-2 border-purple-500' : 'text-slate-400 hover:text-white'}`}
+                            onClick={() => setActiveSidebarTab('testit')}
+                        >
+                            TestIt (Auto)
+                        </button>
+                        <button
                             className={`flex-1 py-2 text-sm font-medium ${activeSidebarTab === 'programs' ? 'bg-slate-800 text-white border-t-2 border-blue-500' : 'text-slate-400 hover:text-white'}`}
                             onClick={() => setActiveSidebarTab('programs')}
                         >
@@ -596,6 +654,74 @@ const CodeRunnerPage = ({ currentUser, importId, highlightedTestCaseId }) => {
                                 onRunTests={handleRunTests}
                                 highlightedId={highlightedTestCaseId}
                             />
+                        ) : activeSidebarTab === 'testit' ? (
+                            <div className="flex flex-col h-full bg-slate-800 p-6 animate-in fade-in">
+                                <h3 className="text-lg font-bold text-white mb-2 flex items-center">
+                                    <Play className="mr-2 text-purple-500" size={20} /> TestIt Automation
+                                </h3>
+                                <p className="text-slate-400 text-sm mb-6 pb-4 border-b border-slate-700">
+                                    Run a headless browser Black Box test against your application URLs.
+                                    This uses Playwright to verify the page loads and dynamic elements are present.
+                                </p>
+
+                                <div className="space-y-4">
+                                    <div>
+                                        <label className="block text-sm font-medium text-slate-300 mb-2">
+                                            Target URL to Test
+                                        </label>
+                                        <input
+                                            type="url"
+                                            value={testItUrl}
+                                            onChange={(e) => setTestItUrl(e.target.value)}
+                                            placeholder="e.g., http://localhost:5173"
+                                            className="w-full bg-slate-900 border border-slate-600 rounded-md px-4 py-3 text-slate-100 focus:outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500 transition-colors"
+                                        />
+                                    </div>
+
+                                    <button
+                                        onClick={handleRunTestIt}
+                                        disabled={isTestItRunning || !testItUrl}
+                                        className="w-full flex justify-center items-center gap-2 px-4 py-3 text-sm font-bold text-white bg-purple-600 hover:bg-purple-700 rounded-md shadow-lg shadow-purple-900/20 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                                    >
+                                        {isTestItRunning ? (
+                                            <>
+                                                <div className="w-4 h-4 rounded-full border-2 border-white/30 border-t-white animate-spin"></div>
+                                                Executing Playwright Script...
+                                            </>
+                                        ) : (
+                                            <>Run Automated UI Test</>
+                                        )}
+                                    </button>
+
+                                    {/* Results Area */}
+                                    {testItResult && (
+                                        <div className={`mt-6 p-4 rounded-lg border shadow-inner ${testItResult.success
+                                            ? (testItResult.status === 'Passed' ? 'bg-green-900/20 border-green-500/30' : 'bg-red-900/20 border-red-500/30')
+                                            : 'bg-red-900/20 border-red-500/30'}`}>
+                                            <div className="flex items-center mb-3 text-sm font-bold uppercase tracking-wider">
+                                                {testItResult.success && testItResult.status === 'Passed'
+                                                    ? <Check className="mr-2 text-green-400" size={16} />
+                                                    : <AlertCircle className="mr-2 text-red-400" size={16} />}
+                                                <span className={testItResult.success && testItResult.status === 'Passed' ? 'text-green-400' : 'text-red-400'}>
+                                                    Test Execution Result
+                                                </span>
+                                            </div>
+
+                                            <div className="font-mono text-sm text-slate-300 space-y-2 bg-slate-950/50 p-3 rounded">
+                                                {testItResult.success ? (
+                                                    <>
+                                                        <p><span className="text-slate-500">Status:</span> <span className={testItResult.status === 'Passed' ? 'text-green-400' : 'text-red-400'}>{testItResult.status}</span></p>
+                                                        <p><span className="text-slate-500">Output:</span> {testItResult.actualResult}</p>
+                                                        {testItResult.time && <p><span className="text-slate-500">Time:</span> {testItResult.time}ms</p>}
+                                                    </>
+                                                ) : (
+                                                    <p className="text-red-400">Error: {testItResult.error}</p>
+                                                )}
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
                         ) : (
                             <ProgramList
                                 onSelectProgram={(id) => { loadProgram(id); setActiveSidebarTab('testcases'); }}
